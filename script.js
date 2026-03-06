@@ -8,6 +8,7 @@ let invoiceInfo = {};
 let transportInfo = {};
 let discountPct = 0;
 let igstPct = 0;
+let editingItemIndex = -1;
 
 // ============================
 // SECTION SWITCH
@@ -50,7 +51,11 @@ function openDialog(id) {
 
     if (id === 'supplier-dialog') prefillSupplier();
     if (id === 'buyer-dialog') prefillBuyer();
-    if (id === 'item-dialog') resetItemForm();
+}
+
+function openAddItemDialog() {
+    resetItemForm();
+    openDialog('item-dialog');
 }
 
 function closeDialog(id) {
@@ -180,6 +185,10 @@ function renderTransport() {
 // 2. ITEM ENTRY
 // ============================
 function resetItemForm() {
+    editingItemIndex = -1;
+    document.getElementById('item-dialog-title').innerText = '＋ Add Item Entry';
+    document.getElementById('btn-save-item').innerText = 'Add Item';
+
     document.getElementById('f-item-desc').value = '';
     document.getElementById('f-item-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('f-item-challan').value = '';
@@ -191,15 +200,43 @@ function saveItemEntry() {
     const desc = document.getElementById('f-item-desc').value.trim();
     if (!desc) { alert('Please enter description.'); return; }
 
-    items.push({
+    const itemData = {
         desc: desc,
         challanDate: document.getElementById('f-item-date').value,
         challanNo: document.getElementById('f-item-challan').value.trim(),
         amount: parseFloat(document.getElementById('f-item-amount').value) || 0
-    });
+    };
+
+    if (editingItemIndex > -1) {
+        items[editingItemIndex] = itemData;
+        editingItemIndex = -1;
+    } else {
+        items.push(itemData);
+    }
 
     renderItems();
     closeDialog('item-dialog');
+}
+
+function editItem(index) {
+    const item = items[index];
+    if (!item) return;
+
+    editingItemIndex = index;
+
+    // Set UI to Edit Mode
+    document.getElementById('item-dialog-title').innerText = '✏️ Edit Item Entry';
+    document.getElementById('btn-save-item').innerText = 'Update Item';
+
+    // Populate fields
+    document.getElementById('f-item-desc').value = item.desc;
+    document.getElementById('f-item-date').value = item.challanDate;
+    document.getElementById('f-item-challan').value = item.challanNo;
+    document.getElementById('f-item-amount').value = item.amount;
+
+    // Show dialog
+    const modal = document.getElementById('item-dialog');
+    modal.style.display = 'flex';
 }
 
 function deleteItem(index) {
@@ -225,7 +262,10 @@ function renderItems() {
             <td>${item.challanDate}</td>
             <td>${item.challanNo}</td>
             <td style="text-align:right">₹ ${item.amount.toLocaleString('en-IN')}</td>
-            <td style="text-align:center"><button class="delete-btn" onclick="deleteItem(${i})" title="Delete">🗑️</button></td>
+            <td style="text-align:center">
+                <button class="edit-btn" onclick="editItem(${i})" title="Edit">✏️</button>
+                <button class="delete-btn" onclick="deleteItem(${i})" title="Delete">🗑️</button>
+            </td>
         `;
         tbody.appendChild(tr);
     });
@@ -296,9 +336,6 @@ function saveInvoice() {
     invoices.push(invoice);
     localStorage.setItem('invoices', JSON.stringify(invoices));
     alert('✅ Invoice saved successfully!');
-
-    // Sync to Firebase if available
-    syncToFirebase();
 
     // Reset form after save
     resetAll(true);
@@ -408,9 +445,6 @@ function deleteInvoice(index) {
     const invoices = JSON.parse(localStorage.getItem('invoices') || '[]');
     invoices.splice(index, 1);
     localStorage.setItem('invoices', JSON.stringify(invoices));
-
-    // Sync to Firebase after deletion
-    syncToFirebase();
 
     renderHistory();
 }
@@ -595,15 +629,27 @@ function initFirebase() {
             // Listen for changes from Firebase
             const invoicesRef = db.ref('global_invoices');
             invoicesRef.on('value', (snapshot) => {
-                const data = snapshot.val();
+                let data = snapshot.val();
                 if (data) {
-                    // Update local storage from Firebase to sync across devices
-                    localStorage.setItem('invoices', JSON.stringify(data));
+                    // Ensure it's an array (Firebase sometimes returns objects)
+                    if (!Array.isArray(data)) data = Object.values(data);
 
-                    // Re-render UI if we are on the history screen
-                    if (document.getElementById('history-list')) {
-                        renderHistory();
-                    }
+                    localStorage.setItem('invoices', JSON.stringify(data));
+                    if (document.getElementById('history-list')) renderHistory();
+                }
+            });
+
+            // Listen for Active Draft Sync
+            const draftRef = db.ref('active_invoice_draft');
+            draftRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && !isSavingInProgress) {
+                    items = data.items || [];
+                    buyerInfo = data.buyerInfo || {};
+                    supplierInfo = data.supplierInfo || supplierInfo;
+                    renderItems();
+                    renderBuyer();
+                    renderSupplier();
                 }
             });
         })
@@ -612,15 +658,40 @@ function initFirebase() {
         });
 }
 
+let isSavingInProgress = false;
+
 function syncToFirebase() {
     if (typeof firebase === 'undefined' || !firebase.apps.length) return;
 
     const invoices = JSON.parse(localStorage.getItem('invoices') || '[]');
     const db = firebase.database();
 
-    // Save to a global path so all devices see the same data
+    isSavingInProgress = true;
     db.ref('global_invoices').set(invoices)
-        .catch(err => console.error("Firebase sync error:", err));
+        .then(() => {
+            // After saving invoice, clear the draft in Firebase
+            db.ref('active_invoice_draft').remove();
+            isSavingInProgress = false;
+        })
+        .catch(err => {
+            console.error("Firebase sync error:", err);
+            isSavingInProgress = false;
+        });
+}
+
+function syncDraftToFirebase() {
+    if (typeof firebase === 'undefined' || !firebase.apps.length || isSavingInProgress) return;
+
+    const db = firebase.database();
+    const draft = {
+        items: items,
+        buyerInfo: buyerInfo,
+        supplierInfo: supplierInfo,
+        updatedAt: new Date().toISOString()
+    };
+
+    db.ref('active_invoice_draft').set(draft)
+        .catch(err => console.error("Draft sync error:", err));
 }
 
 // Check logged in state on main app load
