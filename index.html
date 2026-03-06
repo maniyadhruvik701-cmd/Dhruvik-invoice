@@ -37,7 +37,7 @@
                     <div class="top-actions">
                         <button class="chip-btn" onclick="openDialog('supplier-dialog')">🏢 Supplier Info</button>
                         <button class="chip-btn" onclick="openDialog('buyer-dialog')">👤 Buyer Info</button>
-                        <button class="chip-btn chip-btn-accent" onclick="openDialog('item-dialog')">＋ Add Item</button>
+                        <button class="chip-btn chip-btn-accent" onclick="openAddItemDialog()">＋ Add Item</button>
                     </div>
                 </div>
 
@@ -212,7 +212,7 @@
     <div id="item-dialog" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">＋ Add Item Entry</h2>
+                <h2 class="modal-title" id="item-dialog-title">＋ Add Item Entry</h2>
                 <button class="close-btn" onclick="closeDialog('item-dialog')">×</button>
             </div>
             <div class="form-group">
@@ -233,15 +233,10 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeDialog('item-dialog')">Cancel</button>
-                <button class="btn btn-primary" onclick="saveItemEntry()">Add Item</button>
+                <button class="btn btn-primary" id="btn-save-item" onclick="saveItemEntry()">Add Item</button>
             </div>
         </div>
     </div>
-
-    <!-- ====== FIREBASE SDKs (Compat format for plain HTML) ====== -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
     <script src="script.js"></script>
 </body>
