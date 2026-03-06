@@ -588,112 +588,6 @@ document.addEventListener('DOMContentLoaded', () => {
     updateHistoryBadge(invoices.length);
 });
 
-// ============================
-// AUTH (for signin / signup pages)
-// ============================
-// ============================
-// FIREBASE REALTIME DB SYNC LOGIC
-// ============================
-// IMPORTANT: Put your Firebase config here so data actually syncs
-const firebaseConfig = {
-    apiKey: "AIzaSyAQaglDg92vdyY4KV0PzIQ7uzGo3cMI_vs",
-    authDomain: "invoice-cb128.firebaseapp.com",
-    databaseURL: "https://invoice-cb128-default-rtdb.firebaseio.com",
-    projectId: "invoice-cb128",
-    storageBucket: "invoice-cb128.firebasestorage.app",
-    messagingSenderId: "744211700508",
-    appId: "1:744211700508:web:a5af1c74fc6ce959ef38d9",
-    measurementId: "G-0PDFTPJKYM"
-};
-
-function initFirebase() {
-    if (typeof firebase === 'undefined') return; // Only run if Firebase is loaded (in index.html)
-
-    // Initialize only if not already initialized
-    if (!firebase.apps.length) {
-        if (!firebaseConfig.apiKey) {
-            console.warn("Firebase config is empty. Please add your credentials in script.js to enable real-time sync.");
-            return;
-        }
-        firebase.initializeApp(firebaseConfig);
-    }
-
-    const auth = firebase.auth();
-    const db = firebase.database();
-
-    // Sign in anonymously to allow database access rules
-    auth.signInAnonymously()
-        .then(() => {
-            console.log("Firebase Anonymous Auth successful");
-
-            // Listen for changes from Firebase
-            const invoicesRef = db.ref('global_invoices');
-            invoicesRef.on('value', (snapshot) => {
-                let data = snapshot.val();
-                if (data) {
-                    // Ensure it's an array (Firebase sometimes returns objects)
-                    if (!Array.isArray(data)) data = Object.values(data);
-
-                    localStorage.setItem('invoices', JSON.stringify(data));
-                    if (document.getElementById('history-list')) renderHistory();
-                }
-            });
-
-            // Listen for Active Draft Sync
-            const draftRef = db.ref('active_invoice_draft');
-            draftRef.on('value', (snapshot) => {
-                const data = snapshot.val();
-                if (data && !isSavingInProgress) {
-                    items = data.items || [];
-                    buyerInfo = data.buyerInfo || {};
-                    supplierInfo = data.supplierInfo || supplierInfo;
-                    renderItems();
-                    renderBuyer();
-                    renderSupplier();
-                }
-            });
-        })
-        .catch((error) => {
-            console.error("Firebase Anonymous Auth failed: ", error);
-        });
-}
-
-let isSavingInProgress = false;
-
-function syncToFirebase() {
-    if (typeof firebase === 'undefined' || !firebase.apps.length) return;
-
-    const invoices = JSON.parse(localStorage.getItem('invoices') || '[]');
-    const db = firebase.database();
-
-    isSavingInProgress = true;
-    db.ref('global_invoices').set(invoices)
-        .then(() => {
-            // After saving invoice, clear the draft in Firebase
-            db.ref('active_invoice_draft').remove();
-            isSavingInProgress = false;
-        })
-        .catch(err => {
-            console.error("Firebase sync error:", err);
-            isSavingInProgress = false;
-        });
-}
-
-function syncDraftToFirebase() {
-    if (typeof firebase === 'undefined' || !firebase.apps.length || isSavingInProgress) return;
-
-    const db = firebase.database();
-    const draft = {
-        items: items,
-        buyerInfo: buyerInfo,
-        supplierInfo: supplierInfo,
-        updatedAt: new Date().toISOString()
-    };
-
-    db.ref('active_invoice_draft').set(draft)
-        .catch(err => console.error("Draft sync error:", err));
-}
-
 // Check logged in state on main app load
 document.addEventListener('DOMContentLoaded', () => {
     // Automatically redirect to signin if not authorized
@@ -704,8 +598,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (!isAuthPage) {
-        // Init firebase sync for index page
-        initFirebase();
         loadDefaultSupplier();
         renderSupplier();
     }
